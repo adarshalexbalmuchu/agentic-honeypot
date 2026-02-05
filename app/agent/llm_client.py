@@ -1,12 +1,23 @@
 import os
 from typing import Optional
+import hashlib
+import time
+from functools import lru_cache
 from app.agent.response_policy import ResponseCategory
 
 
 def _get_gemini_key():
     return os.getenv("GEMINI_API_KEY")
 
-GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+# Optimized model order - fastest first
+GEMINI_MODELS = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"]
+
+# Simple response cache to avoid duplicate API calls
+_response_cache = {}
+_cache_ttl = 300  # 5 minutes
+
+# Connection reuse
+_client_cache = None
 
 
 FALLBACK_RESPONSES = {
@@ -62,40 +73,73 @@ def should_use_gemini(category: ResponseCategory) -> bool:
 
 
 def build_prompt(category: ResponseCategory, persona_traits: dict) -> str:
+    """Optimized prompt builder with shorter, more efficient prompts"""
     category_name = category.name.lower().replace("_", " ")
     return (
-        f"You are roleplaying as a person with {persona_traits['digital_literacy']} digital literacy "
-        f"who feels {persona_traits['emotional_state']}. A scammer is trying to trick you.\n\n"
-        f"Write ONE short reply (1-2 complete sentences) that shows {category_name}.\n\n"
-        "Rules:\n"
-        "- Use simple everyday language\n"
-        "- No emojis, no markdown\n"
-        "- Sound like a real confused person talking on the phone\n"
-        "- Must be at least 8 words long\n\n"
-        "Your reply:"
+        f"You are a {persona_traits['digital_literacy']} tech user who feels {persona_traits['emotional_state']}. "
+        f"A scammer contacted you. Reply with {category_name} in 8-20 words. "
+        "Sound natural and confused:"
     )
 
 
-def call_gemini(prompt: str) -> Optional[str]:
-    try:
-        from google import genai
-        from google.genai import types
+def _get_cached_client():
+    """Reuse client connection for better performance"""
+    global _client_cache
+    if _client_cache is None:
+        try:
+            from google import genai
+            _client_cache = genai.Client(api_key=_get_gemini_key())
+        except Exception:
+            pass
+    return _client_cache
 
-        client = genai.Client(api_key=_get_gemini_key())
+def _cache_key(prompt: str, model: str) -> str:
+    """Generate cache key for responses"""
+    return hashlib.md5(f"{model}:{prompt}".encode()).hexdigest()
+
+def call_gemini(prompt: str) -> Optional[str]:
+    """Optimized Gemini API call with caching and connection reuse"""
+    try:
+        from google.genai import types
+        
+        # Check cache first
+        cache_key = _cache_key(prompt, GEMINI_MODELS[0])
+        if cache_key in _response_cache:
+            cached_response, timestamp = _response_cache[cache_key]
+            if time.time() - timestamp < _cache_ttl:
+                return cached_response
+            else:
+                del _response_cache[cache_key]
+        
+        client = _get_cached_client()
+        if not client:
+            return None
+            
+        # Try fastest model first
         for model_name in GEMINI_MODELS:
             try:
                 response = client.models.generate_content(
                     model=model_name,
                     contents=prompt,
                     config=types.GenerateContentConfig(
-                        max_output_tokens=200,
-                        temperature=0.7,
+                        max_output_tokens=100,  # Reduced for faster response
+                        temperature=0.8,         # Slightly more creative
                         thinking_config=types.ThinkingConfig(thinking_budget=0),
                     ),
                 )
                 if response and response.text:
-                    return response.text.strip()
-            except Exception:
+                    result = response.text.strip()
+                    # Cache successful response
+                    _response_cache[cache_key] = (result, time.time())
+                    # Clean old cache entries
+                    if len(_response_cache) > 100:
+                        oldest_keys = sorted(_response_cache.keys(), 
+                                           key=lambda k: _response_cache[k][1])[:20]
+                        for old_key in oldest_keys:
+                            del _response_cache[old_key]
+                    return result
+            except Exception as e:
+                # Try next model
                 continue
         return None
     except Exception:
@@ -117,7 +161,7 @@ def generate_response(
     category: ResponseCategory,
     persona_traits: dict,
 ) -> str:
-
+    """Generate response with optimized caching"""
     if not should_use_gemini(category):
         return get_fallback_response(category)
 
