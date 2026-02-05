@@ -14,6 +14,7 @@ from app.callback.payload_builder import build_callback_payload
 from app.callback.sender import send_callback
 from app.utils.logging import get_logger
 from fastapi.responses import JSONResponse
+from fastapi import Request
 
 
 logger = get_logger(__name__)
@@ -21,6 +22,26 @@ router = APIRouter()
 
 MIN_TURNS_FOR_FINALIZATION = 6
 MIN_INTEL_TYPES = 2
+
+
+@router.get("/health", summary="Health Check")
+def health_check():
+    """Simple health check endpoint for monitoring and testing platforms"""
+    return {"status": "healthy", "service": "agentic-honeypot", "version": "1.0.0"}
+
+
+@router.options("/message", summary="CORS Preflight")
+async def message_options():
+    """Handle CORS preflight requests for the message endpoint"""
+    return JSONResponse(
+        content={"message": "OK"},
+        headers={
+            "Allow": "POST, OPTIONS",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, x-api-key, Authorization",
+        }
+    )
 
 
 @router.get(
@@ -59,9 +80,10 @@ def api_usage_guide():
                 "Missing x-api-key header", 
                 "Wrong endpoint URL (/api/message vs /message)",
                 "Missing Content-Type: application/json header"
-            ]
+            ],
+            "for_hackathon_testers": "If you're testing this API, please use POST method with the format shown above"
         },
-        headers={"Allow": "POST"}
+        headers={"Allow": "POST, OPTIONS"}
     )
 
 

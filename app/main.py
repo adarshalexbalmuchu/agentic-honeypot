@@ -1,15 +1,24 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from app.api.routes import router
+import logging
 
 app = FastAPI(
     title="Agentic Honeypot API",
     version="1.0.0",
 )
+
+# Add request logging middleware for debugging testing platforms
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger = logging.getLogger("uvicorn.access")
+    logger.info(f"Request: {request.method} {request.url.path}")
+    response = await call_next(request)
+    return response
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,6 +29,18 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+
+@app.get("/health")
+def health():
+    """Health check endpoint for monitoring"""
+    return {"status": "ok", "service": "agentic-honeypot"}
+
+
+@app.get("/api/health")
+def api_health():
+    """Alternative health check path with /api prefix"""
+    return {"status": "ok", "service": "agentic-honeypot"}
 
 
 @app.get("/", response_class=HTMLResponse)
