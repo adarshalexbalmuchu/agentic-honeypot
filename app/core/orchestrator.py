@@ -7,7 +7,7 @@ MIN_INTEL_TYPES = 2
 # Detection score thresholds
 SUSPICIOUS_SCORE_THRESHOLD = 3
 ENGAGEMENT_SCORE_THRESHOLD = 6
-MIN_TURNS_FOR_ENGAGEMENT = 2
+MIN_TURNS_FOR_ENGAGEMENT = 1  # Allow single high-threat messages to trigger engagement
 
 
 class InvalidStateTransition(Exception):
@@ -25,6 +25,9 @@ def next_state(
     
     This is the ONLY place where state transition decisions are made.
     Returns the same state if no transition is warranted.
+    
+    For extremely dangerous messages (score >= 9 with high-value signals),
+    this function can progress through multiple states rapidly.
     """
     if current_state in TERMINAL_STATES:
         return current_state
@@ -40,11 +43,22 @@ def next_state(
     has_financial_request = "financial_request_patterns" in signal_types
     has_impersonation = "impersonation_keywords" in signal_types
     
+    # Check if this is an extremely dangerous message
+    is_extreme_threat = (score >= 9 and (has_credential_request or has_financial_request or has_impersonation))
+    
     if current_state == FSMState.INIT:
-        # First message always moves to NORMAL
-        return transition_to_normal(current_state)
+        new_state = transition_to_normal(current_state)
+        # For extreme threats, immediately progress further
+        if is_extreme_threat:
+            new_state = transition_to_suspicious(new_state)
+            new_state = transition_to_agent_engaged(new_state)
+        return new_state
     
     if current_state == FSMState.NORMAL:
+        # For extreme threats, skip to AGENT_ENGAGED immediately  
+        if is_extreme_threat:
+            new_state = transition_to_suspicious(current_state)
+            return transition_to_agent_engaged(new_state)
         # Move to SUSPICIOUS if score exceeds threshold
         if score >= SUSPICIOUS_SCORE_THRESHOLD:
             return transition_to_suspicious(current_state)
@@ -53,12 +67,15 @@ def next_state(
     if current_state == FSMState.SUSPICIOUS:
         # Move to AGENT_ENGAGED if:
         # - Score is high enough AND
-        # - We've seen enough turns AND
+        # - We've seen enough turns AND  
         # - High-value signals present
+        # OR for extremely dangerous messages (score >= 9), engage immediately
         if (
-            score >= ENGAGEMENT_SCORE_THRESHOLD
+            (score >= ENGAGEMENT_SCORE_THRESHOLD
             and turn_count >= MIN_TURNS_FOR_ENGAGEMENT
-            and (has_credential_request or has_financial_request or has_impersonation)
+            and (has_credential_request or has_financial_request or has_impersonation))
+            or 
+            (score >= 9 and (has_credential_request or has_financial_request or has_impersonation))
         ):
             return transition_to_agent_engaged(current_state)
         return current_state
