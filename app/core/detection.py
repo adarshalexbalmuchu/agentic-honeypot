@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 import re
 
 
@@ -161,3 +161,57 @@ def analyze_message(message_text: str) -> Dict[str, object]:
         "score": score,
         "signals": signals,
     }
+
+
+def analyze_with_history(
+    current_message: str,
+    conversation_history: Optional[List[Dict[str, str]]] = None,
+) -> Dict[str, object]:
+    """
+    Analyze current message with optional conversation history context.
+    
+    Applies cumulative scoring for pattern escalation across the conversation.
+    This function is PURE: no state, no side effects.
+    """
+    # Analyze current message
+    result = analyze_message(current_message)
+    
+    if not conversation_history:
+        return result
+    
+    # Analyze historical patterns for cumulative scoring
+    history_score_bonus = 0
+    urgency_count_in_history = 0
+    financial_count_in_history = 0
+    
+    for msg in conversation_history[-10:]:  # Last 10 messages only
+        text = msg.get("text", "").lower() if isinstance(msg, dict) else ""
+        
+        # Count urgency escalation
+        if any(kw in text for kw in URGENCY_KEYWORDS):
+            urgency_count_in_history += 1
+        
+        # Count financial pressure
+        if any(kw in text for kw in FINANCIAL_KEYWORDS):
+            financial_count_in_history += 1
+    
+    # Bonus for repeated urgency (escalation pattern)
+    if urgency_count_in_history >= 3:
+        history_score_bonus += 2
+        result["signals"].append({
+            "type": "urgency_escalation",
+            "count": urgency_count_in_history,
+        })
+    
+    # Bonus for persistent financial pressure
+    if financial_count_in_history >= 2:
+        history_score_bonus += 2
+        result["signals"].append({
+            "type": "persistent_financial_pressure",
+            "count": financial_count_in_history,
+        })
+    
+    result["score"] += history_score_bonus
+    result["history_analyzed"] = True
+    
+    return result

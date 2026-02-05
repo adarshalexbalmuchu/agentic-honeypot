@@ -1,6 +1,20 @@
 from app.extraction import patterns, validators, store
 
 
+# Suspicious keywords to extract (for intelligence reporting)
+SUSPICIOUS_KEYWORDS = {
+    "urgent", "immediately", "verify", "blocked", "suspended",
+    "otp", "pin", "password", "cvv", "card number",
+    "transfer", "payment", "deposit", "refund",
+    "bank", "account", "upi",
+    "police", "arrest", "legal", "court",
+    "government", "income tax", "customs",
+    "last chance", "act now", "expire", "limited time",
+    "click here", "verify now", "account blocked",
+    "share", "send money", "pay now",
+}
+
+
 def extract_intelligence_from_message(session_id: str, message_text: str) -> None:
     if not message_text:
         return
@@ -9,6 +23,14 @@ def extract_intelligence_from_message(session_id: str, message_text: str) -> Non
     _extract_phone_numbers(session_id, message_text)
     _extract_urls(session_id, message_text)
     _extract_bank_accounts(session_id, message_text)
+    _extract_suspicious_keywords(session_id, message_text)
+
+
+def _extract_suspicious_keywords(session_id: str, text: str) -> None:
+    text_lower = text.lower()
+    for keyword in SUSPICIOUS_KEYWORDS:
+        if keyword in text_lower:
+            store.add_suspicious_keyword(session_id, keyword)
 
 
 def _extract_upi_ids(session_id: str, text: str) -> None:

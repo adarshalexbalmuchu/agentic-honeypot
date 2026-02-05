@@ -91,6 +91,17 @@ def call_gemini(prompt: str) -> Optional[str]:
         return None
 
 
+async def call_gemini_async(prompt: str) -> Optional[str]:
+    """Non-blocking Gemini API call using thread executor."""
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, call_gemini, prompt)
+        return result
+    except Exception:
+        return None
+
+
 def generate_response(
     category: ResponseCategory,
     persona_traits: dict,
@@ -101,5 +112,19 @@ def generate_response(
 
     prompt = build_prompt(category, persona_traits)
     gemini_response = call_gemini(prompt)
+
+    return gemini_response or get_fallback_response(category)
+
+
+async def generate_response_async(
+    category: ResponseCategory,
+    persona_traits: dict,
+) -> str:
+    """Async version of generate_response for non-blocking LLM calls."""
+    if not should_use_gemini(category):
+        return get_fallback_response(category)
+
+    prompt = build_prompt(category, persona_traits)
+    gemini_response = await call_gemini_async(prompt)
 
     return gemini_response or get_fallback_response(category)

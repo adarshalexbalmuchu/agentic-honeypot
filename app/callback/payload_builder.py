@@ -9,11 +9,11 @@ def build_callback_payload(
     upi_ids: List[str],
     phishing_links: List[str],
     phone_numbers: List[str],
-    ifsc_codes: List[str],
+    suspicious_keywords: List[str],
     agent_notes: str,
 ) -> Dict[str, Any]:
     """
-    Build the final callback payload.
+    Build the final callback payload matching GUVI evaluation format.
     This function performs formatting ONLY.
     """
 
@@ -26,7 +26,7 @@ def build_callback_payload(
             "upiIds": upi_ids or [],
             "phishingLinks": phishing_links or [],
             "phoneNumbers": phone_numbers or [],
-            "ifscCodes": ifsc_codes or [],
+            "suspiciousKeywords": suspicious_keywords or [],
         },
         "agentNotes": agent_notes or "",
     }

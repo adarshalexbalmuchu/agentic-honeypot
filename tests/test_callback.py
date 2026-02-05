@@ -12,15 +12,17 @@ def test_payload_builder_structure():
         upi_ids=["test@upi"],
         phishing_links=[],
         phone_numbers=[],
-        ifsc_codes=[],
+        suspicious_keywords=["urgent", "verify"],
         agent_notes="done",
     )
 
     assert payload["sessionId"] == "s1"
     assert "extractedIntelligence" in payload
     assert "upiIds" in payload["extractedIntelligence"]
+    assert "suspiciousKeywords" in payload["extractedIntelligence"]
 
 
+@patch("app.callback.sender.CALLBACK_URL", "http://test-callback.example.com")
 @patch("app.callback.sender.httpx.post")
 def test_callback_sent_once(mock_post):
     mock_response = MagicMock()
@@ -35,7 +37,7 @@ def test_callback_sent_once(mock_post):
         upi_ids=[],
         phishing_links=[],
         phone_numbers=[],
-        ifsc_codes=[],
+        suspicious_keywords=[],
         agent_notes="",
     )
 
@@ -45,6 +47,7 @@ def test_callback_sent_once(mock_post):
     assert has_callback_been_sent("s-idem") is True
 
 
+@patch("app.callback.sender.CALLBACK_URL", "http://test-callback.example.com")
 @patch("app.callback.sender.httpx.post")
 def test_callback_failure_does_not_mark_sent(mock_post):
     mock_response = MagicMock()
@@ -59,7 +62,7 @@ def test_callback_failure_does_not_mark_sent(mock_post):
         upi_ids=[],
         phishing_links=[],
         phone_numbers=[],
-        ifsc_codes=[],
+        suspicious_keywords=[],
         agent_notes="",
     )
 
