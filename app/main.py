@@ -827,26 +827,51 @@ def root():
                 </div>
             </div>
 
-            <!-- Live Agent Simulation -->
+            <!-- Live API Testing -->
             <div class="simulation-panel">
                 <div class="simulation-header">
                     <div class="sim-title">
                         <div class="live-dot" id="liveDot" style="display:none;"></div>
-                        <span>Live Agent Simulation</span>
+                        <span>Live API Testing</span>
                     </div>
                     <div class="sim-controls">
-                        <button class="sim-btn" onclick="resetSimulation()">Reset</button>
-                        <button class="sim-btn primary" id="startBtn" onclick="startSimulation()">▶ Start Demo</button>
+                        <button class="sim-btn" onclick="clearChat()">Clear</button>
+                    </div>
+                </div>
+                
+                <!-- API Key Input -->
+                <div style="padding: 12px 16px; background: var(--bg-dark); border-bottom: 1px solid var(--border);">
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <label style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">API Key:</label>
+                        <input type="password" id="apiKeyInput" placeholder="Enter your x-api-key" 
+                               style="flex: 1; padding: 8px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary); font-family: 'IBM Plex Mono', monospace; font-size: 12px;">
+                        <button onclick="toggleKeyVisibility()" class="sim-btn" style="padding: 8px 12px;">👁</button>
                     </div>
                 </div>
                 
                 <div class="chat-container">
                     <div class="chat-messages" id="chatMessages">
-                        <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-                            <div style="font-size: 48px; margin-bottom: 16px;">🎭</div>
-                            <div style="font-size: 14px;">Click "Start Demo" to simulate a scammer conversation</div>
-                            <div style="font-size: 12px; margin-top: 8px;">Watch the agent detect, engage, and extract intelligence</div>
+                        <div style="text-align: center; padding: 40px; color: var(--text-muted);" id="emptyState">
+                            <div style="font-size: 48px; margin-bottom: 16px;">🛡️</div>
+                            <div style="font-size: 14px;">Enter your API key and send a message</div>
+                            <div style="font-size: 12px; margin-top: 8px;">Real API calls to your honeypot backend</div>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- Message Input -->
+                <div style="padding: 16px; background: var(--bg-dark); border-top: 1px solid var(--border);">
+                    <div style="display: flex; gap: 12px;">
+                        <input type="text" id="messageInput" placeholder="Type a scam message to test..." 
+                               value="Urgent! Your bank account is blocked. Send OTP 4589 to verify!"
+                               style="flex: 1; padding: 12px 16px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 13px;"
+                               onkeypress="if(event.key==='Enter')sendMessage()">
+                        <button onclick="sendMessage()" class="sim-btn primary" id="sendBtn" style="padding: 12px 24px;">
+                            Send →
+                        </button>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 10px; color: var(--text-muted);">
+                        Session: <span id="sessionDisplay" style="font-family: 'IBM Plex Mono', monospace;">--</span>
                     </div>
                 </div>
                 
@@ -1028,35 +1053,62 @@ def root():
     </div>
 
     <script>
-        // Simulation state
-        let simState = {
-            running: false,
-            msgCount: 0,
-            intelCount: 0,
-            score: 0,
-            startTime: null,
-            currentState: 'INIT',
-            intervalId: null,
-            timeoutIds: []
-        };
+        // Session state
+        let sessionId = 'session-' + Date.now();
+        let msgCount = 0;
+        let startTime = null;
+        let timerInterval = null;
         
-        // Scammer messages for demo
-        const scammerMessages = [
-            { text: "Hello, I am calling from State Bank. Your account has been blocked due to KYC issue.", score: 4, intel: null, keywords: ['blocked', 'kyc', 'bank'] },
-            { text: "Please share your OTP 4589 that you received on your phone to verify your identity.", score: 6, intel: { type: 'phone', value: 'OTP: 4589' }, keywords: ['otp', 'verify'] },
-            { text: "For faster processing, transfer Rs. 500 to this UPI ID: scammer@paytm", score: 7, intel: { type: 'upi', value: 'scammer@paytm' }, keywords: ['transfer', 'upi'] },
-            { text: "Or you can send to bank account 9876543210123456 IFSC: SBIN0001234", score: 8, intel: { type: 'account', value: '9876543210123456' }, keywords: ['bank account'] },
-            { text: "This is urgent! Your account will be permanently blocked if not done immediately!", score: 9, intel: null, keywords: ['urgent', 'blocked', 'immediately'] }
-        ];
+        document.getElementById('sessionDisplay').textContent = sessionId;
         
-        // Agent responses
-        const agentResponses = [
-            "Oh no, I had no idea there was a problem with my account! What happened?",
-            "I'm not sure where to find the OTP... let me check my phone. One moment please.",
-            "500 rupees? That seems like a lot... is there any other way to do this?",
-            "I'm a bit confused by all these numbers. Can you explain again slowly?",
-            "Okay okay, please don't block my account! I'm trying to help but this is very confusing for me."
-        ];
+        // Toggle API key visibility
+        function toggleKeyVisibility() {
+            const input = document.getElementById('apiKeyInput');
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+        
+        // Clear chat
+        function clearChat() {
+            sessionId = 'session-' + Date.now();
+            msgCount = 0;
+            startTime = null;
+            if (timerInterval) clearInterval(timerInterval);
+            
+            document.getElementById('sessionDisplay').textContent = sessionId;
+            document.getElementById('chatMessages').innerHTML = 
+                '<div style="text-align: center; padding: 40px; color: var(--text-muted);" id="emptyState">' +
+                    '<div style="font-size: 48px; margin-bottom: 16px;">🛡️</div>' +
+                    '<div style="font-size: 14px;">Enter your API key and send a message</div>' +
+                    '<div style="font-size: 12px; margin-top: 8px;">Real API calls to your honeypot backend</div>' +
+                '</div>';
+            
+            // Reset metrics
+            document.getElementById('metricMsgs').textContent = '0';
+            document.getElementById('metricDuration').textContent = '0s';
+            document.getElementById('metricScore').textContent = '0';
+            document.getElementById('metricIntel').textContent = '0';
+            document.getElementById('msgCount').textContent = '0';
+            document.getElementById('intelCount').textContent = '0';
+            document.getElementById('detectScore').textContent = '--';
+            
+            // Reset intel
+            ['phone', 'upi', 'account', 'keywords'].forEach(type => {
+                document.getElementById('intel-' + type).classList.remove('found');
+                document.getElementById('intel-' + type + '-val').textContent = '--';
+            });
+            
+            // Reset FSM
+            updateFSM('INIT');
+            
+            // Reset pipeline
+            for (let i = 1; i <= 6; i++) {
+                document.getElementById('icon-' + i).classList.remove('active', 'completed', 'warning');
+            }
+            
+            document.getElementById('liveDot').style.display = 'none';
+            document.getElementById('agentStatus').className = 'status-dot warning';
+            document.getElementById('agentStatusText').textContent = 'Agent Idle';
+        }
         
         // Update FSM display
         function updateFSM(newState) {
@@ -1071,7 +1123,6 @@ def root():
             });
             
             document.getElementById('currentState').textContent = newState;
-            simState.currentState = newState;
         }
         
         // Update pipeline stage
@@ -1086,6 +1137,10 @@ def root():
         
         // Add chat message
         function addMessage(type, text, tags = []) {
+            // Remove empty state
+            const emptyState = document.getElementById('emptyState');
+            if (emptyState) emptyState.remove();
+            
             const chat = document.getElementById('chatMessages');
             const msg = document.createElement('div');
             msg.className = 'chat-message ' + type;
@@ -1107,166 +1162,172 @@ def root():
             chat.scrollTop = chat.scrollHeight;
         }
         
-        // Update intel display
-        function updateIntel(type, value) {
-            const el = document.getElementById('intel-' + type);
-            const valEl = document.getElementById('intel-' + type + '-val');
-            el.classList.add('found');
-            valEl.textContent = value;
-            simState.intelCount++;
-            document.getElementById('intelCount').textContent = simState.intelCount;
-            document.getElementById('metricIntel').textContent = simState.intelCount;
-        }
-        
-        // Update metrics
-        function updateMetrics() {
-            document.getElementById('metricMsgs').textContent = simState.msgCount;
-            document.getElementById('msgCount').textContent = simState.msgCount;
-            
-            if (simState.startTime) {
-                const elapsed = Math.floor((Date.now() - simState.startTime) / 1000);
-                document.getElementById('metricDuration').textContent = elapsed + 's';
-            }
-            
-            document.getElementById('metricScore').textContent = simState.score;
-            document.getElementById('detectScore').textContent = simState.score;
-        }
-        
-        // Start simulation
-        function startSimulation() {
-            if (simState.running) return;
-            simState.running = true;
-            simState.startTime = Date.now();
-            
-            document.getElementById('startBtn').disabled = true;
-            document.getElementById('startBtn').textContent = 'Running...';
-            document.getElementById('liveDot').style.display = 'block';
-            document.getElementById('chatMessages').innerHTML = '';
-            
-            // Update agent status
-            document.getElementById('agentStatus').className = 'status-dot';
-            document.getElementById('agentStatusText').textContent = 'Agent Active';
-            
-            // Start timer
-            simState.intervalId = setInterval(updateMetrics, 1000);
-            
-            // Run conversation
-            let delay = 500;
-            scammerMessages.forEach((msg, idx) => {
-                // Scammer message
-                const t1 = setTimeout(() => {
-                    simState.msgCount++;
-                    simState.score = msg.score;
-                    activateStage(2);
-                    
-                    const tags = [{ type: 'threat', label: 'Threat: ' + msg.score + '/10' }];
-                    if (msg.keywords.length > 0) {
-                        updateIntel('keywords', msg.keywords.join(', '));
-                    }
-                    addMessage('scammer', msg.text, tags);
-                    
-                    // Update FSM based on score
-                    if (msg.score >= 3 && msg.score < 6) updateFSM('SUSPICIOUS');
-                    if (msg.score >= 6) updateFSM('AGENT_ENGAGED');
-                    
-                    // Extract intel
-                    if (msg.intel) {
-                        updateIntel(msg.intel.type, msg.intel.value);
-                        activateStage(5);
-                    }
-                    
-                    updateMetrics();
-                }, delay);
-                simState.timeoutIds.push(t1);
-                delay += 2000;
-                
-                // Agent response
-                const t2 = setTimeout(() => {
-                    simState.msgCount++;
-                    activateStage(3);
-                    activateStage(4);
-                    addMessage('agent', agentResponses[idx], [{ type: 'ai', label: 'Gemini AI' }]);
-                    updateMetrics();
-                }, delay);
-                simState.timeoutIds.push(t2);
-                delay += 1500;
-            });
-            
-            // Final callback
-            const t3 = setTimeout(() => {
-                updateFSM('INTEL_READY');
-                activateStage(5);
-                
-                setTimeout(() => {
-                    updateFSM('CALLBACK_SENT');
-                    activateStage(6);
-                    addMessage('agent', '📤 Intelligence package sent to GUVI evaluation endpoint', [{ type: 'intel', label: 'Callback Sent' }]);
-                    
-                    setTimeout(() => {
-                        updateFSM('TERMINATED');
-                        document.getElementById('agentStatus').classList.add('warning');
-                        document.getElementById('agentStatusText').textContent = 'Session Complete';
-                        document.getElementById('startBtn').disabled = false;
-                        document.getElementById('startBtn').textContent = '▶ Restart Demo';
-                        simState.running = false;
-                        clearInterval(simState.intervalId);
-                    }, 1500);
-                }, 1500);
-            }, delay + 1000);
-            simState.timeoutIds.push(t3);
-        }
-        
-        // Reset simulation
-        function resetSimulation() {
-            simState.timeoutIds.forEach(id => clearTimeout(id));
-            clearInterval(simState.intervalId);
-            
-            simState = {
-                running: false,
-                msgCount: 0,
-                intelCount: 0,
-                score: 0,
-                startTime: null,
-                currentState: 'INIT',
-                intervalId: null,
-                timeoutIds: []
+        // Extract intel from message
+        function extractIntel(text) {
+            const patterns = {
+                phone: /\\b[6-9]\\d{9}\\b|\\b\\d{4}\\b/g,
+                upi: /[a-zA-Z0-9.\\-_]+@[a-zA-Z]+/g,
+                account: /\\b\\d{10,18}\\b/g
             };
             
-            document.getElementById('startBtn').disabled = false;
-            document.getElementById('startBtn').textContent = '▶ Start Demo';
-            document.getElementById('liveDot').style.display = 'none';
-            document.getElementById('agentStatus').className = 'status-dot warning';
-            document.getElementById('agentStatusText').textContent = 'Agent Idle';
+            const keywords = ['urgent', 'blocked', 'otp', 'bank', 'kyc', 'verify', 'transfer', 'immediately', 'account'];
+            const foundKeywords = keywords.filter(k => text.toLowerCase().includes(k));
             
-            document.getElementById('chatMessages').innerHTML = 
-                '<div style="text-align: center; padding: 40px; color: var(--text-muted);">' +
-                    '<div style="font-size: 48px; margin-bottom: 16px;">🎭</div>' +
-                    '<div style="font-size: 14px;">Click "Start Demo" to simulate a scammer conversation</div>' +
-                    '<div style="font-size: 12px; margin-top: 8px;">Watch the agent detect, engage, and extract intelligence</div>' +
-                '</div>';
-            
-            // Reset intel
-            ['phone', 'upi', 'account', 'keywords'].forEach(type => {
-                document.getElementById('intel-' + type).classList.remove('found');
-                document.getElementById('intel-' + type + '-val').textContent = '--';
-            });
-            
-            // Reset metrics
-            document.getElementById('metricMsgs').textContent = '0';
-            document.getElementById('metricDuration').textContent = '0s';
-            document.getElementById('metricScore').textContent = '0';
-            document.getElementById('metricIntel').textContent = '0';
-            document.getElementById('msgCount').textContent = '0';
-            document.getElementById('intelCount').textContent = '0';
-            document.getElementById('detectScore').textContent = '--';
-            
-            // Reset FSM
-            updateFSM('INIT');
-            
-            // Reset pipeline
-            for (let i = 1; i <= 6; i++) {
-                document.getElementById('icon-' + i).classList.remove('active', 'completed', 'warning');
+            if (foundKeywords.length > 0) {
+                document.getElementById('intel-keywords').classList.add('found');
+                document.getElementById('intel-keywords-val').textContent = foundKeywords.join(', ');
             }
+            
+            const phones = text.match(patterns.phone);
+            if (phones) {
+                document.getElementById('intel-phone').classList.add('found');
+                document.getElementById('intel-phone-val').textContent = phones.join(', ');
+            }
+            
+            const upis = text.match(patterns.upi);
+            if (upis) {
+                document.getElementById('intel-upi').classList.add('found');
+                document.getElementById('intel-upi-val').textContent = upis.join(', ');
+            }
+            
+            const accounts = text.match(patterns.account);
+            if (accounts) {
+                document.getElementById('intel-account').classList.add('found');
+                document.getElementById('intel-account-val').textContent = accounts[0];
+            }
+            
+            let intelCount = 0;
+            if (foundKeywords.length > 0) intelCount++;
+            if (phones) intelCount++;
+            if (upis) intelCount++;
+            if (accounts) intelCount++;
+            
+            document.getElementById('intelCount').textContent = intelCount;
+            document.getElementById('metricIntel').textContent = intelCount;
+        }
+        
+        // Calculate threat score
+        function calculateScore(text) {
+            const indicators = ['urgent', 'blocked', 'otp', 'bank', 'kyc', 'verify', 'transfer', 'immediately', 'account', 'pin', 'password'];
+            let score = 0;
+            indicators.forEach(ind => {
+                if (text.toLowerCase().includes(ind)) score++;
+            });
+            return Math.min(score, 10);
+        }
+        
+        // Send message to real API
+        async function sendMessage() {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            const messageText = document.getElementById('messageInput').value;
+            
+            if (!apiKey) {
+                alert('Please enter your API key');
+                return;
+            }
+            
+            if (!messageText) {
+                alert('Please enter a message');
+                return;
+            }
+            
+            // Start timer on first message
+            if (!startTime) {
+                startTime = Date.now();
+                timerInterval = setInterval(() => {
+                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                    document.getElementById('metricDuration').textContent = elapsed + 's';
+                }, 1000);
+            }
+            
+            // Show live indicator
+            document.getElementById('liveDot').style.display = 'block';
+            document.getElementById('agentStatus').className = 'status-dot';
+            document.getElementById('agentStatusText').textContent = 'Processing...';
+            
+            // Activate pipeline stage 1
+            activateStage(1);
+            
+            // Calculate and display threat score
+            const score = calculateScore(messageText);
+            document.getElementById('detectScore').textContent = score;
+            document.getElementById('metricScore').textContent = score;
+            
+            // Extract intel from sent message
+            extractIntel(messageText);
+            
+            // Add user message to chat
+            msgCount++;
+            addMessage('scammer', messageText, [{ type: 'threat', label: 'Score: ' + score + '/10' }]);
+            document.getElementById('metricMsgs').textContent = msgCount;
+            document.getElementById('msgCount').textContent = msgCount;
+            
+            // Update FSM based on score
+            if (score >= 3) {
+                activateStage(2);
+                updateFSM('SUSPICIOUS');
+            }
+            if (score >= 5) {
+                activateStage(3);
+                updateFSM('AGENT_ENGAGED');
+            }
+            
+            // Clear input
+            document.getElementById('messageInput').value = '';
+            
+            // Disable send button
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+            
+            try {
+                const response = await fetch('/message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey
+                    },
+                    body: JSON.stringify({
+                        sessionId: sessionId,
+                        message: {
+                            sender: 'scammer',
+                            text: messageText,
+                            timestamp: Math.floor(Date.now() / 1000)
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Success - add agent response
+                    msgCount++;
+                    activateStage(4);
+                    addMessage('agent', data.reply, [{ type: 'ai', label: 'Gemini AI' }]);
+                    document.getElementById('metricMsgs').textContent = msgCount;
+                    document.getElementById('msgCount').textContent = msgCount;
+                    
+                    document.getElementById('agentStatusText').textContent = 'Agent Active';
+                    
+                    // Check if we're extracting enough intel
+                    const intelCount = parseInt(document.getElementById('metricIntel').textContent);
+                    if (intelCount >= 2) {
+                        activateStage(5);
+                        updateFSM('INTEL_READY');
+                    }
+                } else {
+                    // Error
+                    addMessage('agent', '❌ Error: ' + (data.detail || JSON.stringify(data)), [{ type: 'threat', label: 'API Error' }]);
+                    document.getElementById('agentStatusText').textContent = 'Error';
+                }
+            } catch (err) {
+                addMessage('agent', '❌ Network Error: ' + err.message, [{ type: 'threat', label: 'Error' }]);
+                document.getElementById('agentStatusText').textContent = 'Error';
+            }
+            
+            // Re-enable send button
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send →';
         }
     </script>
 </body>
