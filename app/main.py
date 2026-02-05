@@ -2,12 +2,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from app.api.routes import router
 
 app = FastAPI(
     title="Agentic Honeypot API",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(router)
@@ -1061,6 +1070,7 @@ def root():
         let msgCount = 0;
         let startTime = null;
         let timerInterval = null;
+        let conversationHistory = [];
         
         document.getElementById('sessionDisplay').textContent = sessionId;
         
@@ -1284,6 +1294,12 @@ def root():
             sendBtn.textContent = 'Sending...';
             
             try {
+                const msgPayload = {
+                    sender: 'scammer',
+                    text: messageText,
+                    timestamp: Math.floor(Date.now() / 1000)
+                };
+                
                 const response = await fetch('/message', {
                     method: 'POST',
                     headers: {
@@ -1292,17 +1308,30 @@ def root():
                     },
                     body: JSON.stringify({
                         sessionId: sessionId,
-                        message: {
-                            sender: 'scammer',
-                            text: messageText,
-                            timestamp: Math.floor(Date.now() / 1000)
-                        }
+                        message: msgPayload,
+                        conversationHistory: conversationHistory
                     })
                 });
                 
-                const data = await response.json();
+                // Store in conversation history for future turns
+                conversationHistory.push(msgPayload);
+                
+                const text = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (parseErr) {
+                    throw new Error('Server returned invalid JSON: ' + text.substring(0, 200));
+                }
                 
                 if (response.ok) {
+                    // Store agent reply in history too
+                    conversationHistory.push({
+                        sender: 'agent',
+                        text: data.reply,
+                        timestamp: Math.floor(Date.now() / 1000)
+                    });
+                    
                     // Success - add agent response
                     msgCount++;
                     activateStage(4);
@@ -1320,11 +1349,11 @@ def root():
                     }
                 } else {
                     // Error
-                    addMessage('agent', '❌ Error: ' + (data.detail || JSON.stringify(data)), [{ type: 'threat', label: 'API Error' }]);
+                    addMessage('agent', 'Error: ' + (data.detail || JSON.stringify(data)), [{ type: 'threat', label: 'API Error ' + response.status }]);
                     document.getElementById('agentStatusText').textContent = 'Error';
                 }
             } catch (err) {
-                addMessage('agent', '❌ Network Error: ' + err.message, [{ type: 'threat', label: 'Error' }]);
+                addMessage('agent', 'Network Error: ' + err.message, [{ type: 'threat', label: 'Error' }]);
                 document.getElementById('agentStatusText').textContent = 'Error';
             }
             
