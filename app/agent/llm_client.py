@@ -3,14 +3,31 @@ from typing import Optional
 import hashlib
 import time
 from functools import lru_cache
+import threading
+from collections import defaultdict
 from app.agent.response_policy import ResponseCategory
 
 
 def _get_gemini_key():
     return os.getenv("GEMINI_API_KEY")
 
-# Optimized model order - fastest first
-GEMINI_MODELS = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"]
+# OPTIMIZED: Use fresh quotas first, avoid overused models
+GEMINI_MODELS = [
+    "gemini-2.5-flash-lite",   # Fresh: 0/10 RPM, 0/250K TPM, 0/20 RPD  
+    "gemma-2-2b-it",           # Local: 0/30 RPM, 0/15K TPM (using correct name)
+    "gemini-2.5-flash",        # LAST: Almost at limit (4/5 RPM, 19/20 RPD)
+]
+
+# Rate limiting tracking
+_request_times = defaultdict(list)
+_rate_limit_lock = threading.Lock()
+
+# Model quotas (RPM limits)
+MODEL_LIMITS = {
+    "gemini-2.5-flash-lite": 10,
+    "gemma-2-2b-it": 30, 
+    "gemini-2.5-flash": 5,  # Use sparingly!
+}
 
 # Simple response cache to avoid duplicate API calls
 _response_cache = {}
@@ -72,6 +89,44 @@ def should_use_gemini(category: ResponseCategory) -> bool:
     return bool(_get_gemini_key())
 
 
+def _can_make_request(model_name: str) -> bool:
+    """Check if we can make a request without hitting rate limits"""
+    with _rate_limit_lock:
+        now = time.time()
+        minute_ago = now - 60
+        
+        # Clean old entries
+        _request_times[model_name] = [
+            t for t in _request_times[model_name] if t > minute_ago
+        ]
+        
+        # Check if under limit
+        limit = MODEL_LIMITS.get(model_name, 5)
+        return len(_request_times[model_name]) < limit
+
+def _record_request(model_name: str):
+    """Record a request for rate limiting"""
+    with _rate_limit_lock:
+        _request_times[model_name].append(time.time())
+
+def get_quota_status() -> dict:
+    """Get current quota usage status for monitoring"""
+    with _rate_limit_lock:
+        status = {}
+        now = time.time()
+        minute_ago = now - 60
+        
+        for model, limit in MODEL_LIMITS.items():
+            recent_requests = [
+                t for t in _request_times[model] if t > minute_ago
+            ]
+            status[model] = {
+                "requests_last_minute": len(recent_requests),
+                "rpm_limit": limit,
+                "utilization_percent": round((len(recent_requests) / limit) * 100, 1)
+            }
+        return status
+
 def build_prompt(category: ResponseCategory, persona_traits: dict) -> str:
     """Optimized prompt builder with shorter, more efficient prompts"""
     category_name = category.name.lower().replace("_", " ")
@@ -98,12 +153,12 @@ def _cache_key(prompt: str, model: str) -> str:
     return hashlib.md5(f"{model}:{prompt}".encode()).hexdigest()
 
 def call_gemini(prompt: str) -> Optional[str]:
-    """Optimized Gemini API call with caching and connection reuse"""
+    """Quota-aware Gemini API call with smart model selection"""
     try:
         from google.genai import types
         
         # Check cache first
-        cache_key = _cache_key(prompt, GEMINI_MODELS[0])
+        cache_key = _cache_key(prompt, "cached")
         if cache_key in _response_cache:
             cached_response, timestamp = _response_cache[cache_key]
             if time.time() - timestamp < _cache_ttl:
@@ -115,32 +170,37 @@ def call_gemini(prompt: str) -> Optional[str]:
         if not client:
             return None
             
-        # Try fastest model first
+        # Try models in quota-optimized order
         for model_name in GEMINI_MODELS:
+            if not _can_make_request(model_name):
+                continue  # Skip if rate limited
+                
             try:
+                _record_request(model_name)
+                
+                # Optimized config - minimal tokens for speed
+                config = types.GenerateContentConfig(
+                    max_output_tokens=40,   # Very short for hackathon demo
+                    temperature=0.9,        # More variety
+                    thinking_config=types.ThinkingConfig(thinking_budget=0) if "gemini" in model_name else None,
+                )
+                
                 response = client.models.generate_content(
                     model=model_name,
                     contents=prompt,
-                    config=types.GenerateContentConfig(
-                        max_output_tokens=100,  # Reduced for faster response
-                        temperature=0.8,         # Slightly more creative
-                        thinking_config=types.ThinkingConfig(thinking_budget=0),
-                    ),
+                    config=config,
                 )
+                
                 if response and response.text:
                     result = response.text.strip()
                     # Cache successful response
                     _response_cache[cache_key] = (result, time.time())
-                    # Clean old cache entries
-                    if len(_response_cache) > 100:
-                        oldest_keys = sorted(_response_cache.keys(), 
-                                           key=lambda k: _response_cache[k][1])[:20]
-                        for old_key in oldest_keys:
-                            del _response_cache[old_key]
                     return result
-            except Exception as e:
-                # Try next model
+                    
+            except Exception:
+                # Model failed, try next one
                 continue
+                
         return None
     except Exception:
         return None
