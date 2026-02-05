@@ -13,6 +13,7 @@ from app.core.termination import finalize_intelligence, mark_callback_sent, term
 from app.callback.payload_builder import build_callback_payload
 from app.callback.sender import send_callback
 from app.utils.logging import get_logger
+from fastapi.responses import JSONResponse
 
 
 logger = get_logger(__name__)
@@ -20,6 +21,48 @@ router = APIRouter()
 
 MIN_TURNS_FOR_FINALIZATION = 6
 MIN_INTEL_TYPES = 2
+
+
+@router.get(
+    "/message", 
+    summary="API Usage Guide",
+    description="Shows how to correctly use the POST /message endpoint"
+)
+def api_usage_guide():
+    """
+    Helpful endpoint that explains correct API usage when someone tries GET /message
+    (which causes 405 Method Not Allowed error)
+    """
+    return JSONResponse(
+        status_code=405,
+        content={
+            "error": "Method Not Allowed",
+            "message": "This endpoint only accepts POST requests",
+            "correct_usage": {
+                "method": "POST",
+                "url": "/message",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "x-api-key": "test-api-key-123"
+                },
+                "body_example": {
+                    "sessionId": "your-session-id",
+                    "message": {
+                        "sender": "user",
+                        "text": "Your message here",
+                        "timestamp": 1738715600
+                    }
+                }
+            },
+            "common_mistakes": [
+                "Using GET instead of POST method",
+                "Missing x-api-key header", 
+                "Wrong endpoint URL (/api/message vs /message)",
+                "Missing Content-Type: application/json header"
+            ]
+        },
+        headers={"Allow": "POST"}
+    )
 
 
 def extract_signal_types(signals: list) -> set:
