@@ -22,16 +22,16 @@ GEMINI_MODELS = [
 _request_times = defaultdict(list)
 _rate_limit_lock = threading.Lock()
 
-# Model quotas (RPM limits)
+# Model quotas (RPM limits) - increased to maximize API usage
 MODEL_LIMITS = {
-    "gemini-2.5-flash-lite": 10,
-    "gemma-2-2b-it": 30, 
-    "gemini-2.5-flash": 5,  # Use sparingly!
+    "gemini-2.5-flash-lite": 15,  # Increased from 10
+    "gemma-2-2b-it": 45,  # Increased from 30
+    "gemini-2.5-flash": 8,  # Increased from 5
 }
 
 # Simple response cache to avoid duplicate API calls
 _response_cache = {}
-_cache_ttl = 300  # 5 minutes
+_cache_ttl = 600  # 10 minutes (increased from 5 for better reuse)
 
 # Connection reuse
 _client_cache = None
@@ -39,25 +39,56 @@ _client_cache = None
 
 FALLBACK_RESPONSES = {
     ResponseCategory.CONFUSION: [
-        "I'm not sure I understand what you mean.",
-        "Sorry, can you explain that again?",
+        "Wait, are you really from the company? I'm a bit confused.",
+        "Sorry, I don't understand. What exactly do you mean?",
+        "I'm not sure what you're asking for. Can you explain?",
+        "This is confusing. Are you sure this is right?",
+        "I don't get it. Why do you need that information?",
     ],
     ResponseCategory.CLARIFICATION: [
-        "What exactly do I need to do?",
-        "Could you explain it more simply?",
-    ],
+        "What exactly do I need to do? I'm not clear on the steps.",
+        "Could you explain it more simply? I'm not tech-savvy.",
+        "I'm confused about what you're asking. Can you be clearer?",
+        "Wait, which account are you talking about? I have several.",
+        "Uh, I'm not sure about this. I think I need to check with someone.",
+        "This makes me a bit nervous. Is this really necessary?",
+        "I don't know... this doesn't feel right to me.",
+        "Hmm, I'm hesitant. Can I call you back later?",
+        "I'm not comfortable with this. Are you sure it's safe?
     ResponseCategory.HESITATION: [
         "I'm not sure about this.",
-        "This makes me a bit nervous.",
+        "Oh, that's a bit concerning. I'm not sure I understand.",
+        "I'm worried something might be wrong. What's happening?",
+        "This is making me nervous. Is my account really at risk?",
+        "Wait, is this serious? I'm getting worried now.",
+        "I don't like the sound of this. What should I do?
     ],
-    ResponseCategory.MILD_CONCERN: [
+    ResponseCategory.MILD_CONCERN: [with something right now.",
+        "I'm at work. Can we do this after I get home?",
+        "Uh, could you repeat that? My connection's a bit spotty today.",
+        "Hold on, someone's at the door. Can you  Give me a second.",
+        "Okay, I think I have that information. Let me look for it.",
+        "I wrote it down somewhere... just trying to find it now.",
+        "Let me see... I think I remember where I put that.",
+        "Hold on, I'm looking through my papers to find it.wait a minute?",
+        "Can I call you back in an hour? I'm in the middle of something
         "I'm worried something might be wrong.",
-    ],
+    ],Oh no, sorry, I think I messed that up. Wait, what was it again?",
+        "Oops, I might have given you the wrong thing. Let me try again.",
+        "Sorry, I'm not very good with this tech stuff. Did I do it wrong?",
+        "I think I made a mistake. Can you tell me what to do again?",
+        "Wait, that didn't work. What am I supposed to do?
     ResponseCategory.DELAY_TACTIC: [
         "Can I do this later? I'm busy right now.",
-    ],
-    ResponseCategory.PARTIAL_COMPLIANCE: [
-        "Let me check, I might have it somewhere.",
+    ], This seems complicated.",
+        "Can I just come to the branch instead? That would be easier.",
+        "Is there a simpler method? I'm not good with phone banking.",
+        "Hmm, it says something went wrong. What does that mean?",
+        "I tried but it didn't go through. Is there a problem?",
+        "It's giving me an error message. Should I try again?",
+        "I might have entered it incorrectly. Can you help me?",
+        "It's asking me to do something else now. What should I do?",
+        "The app isn't working properly. Is this normal?",e.",
     ],
     ResponseCategory.MISTAKE_ADMISSION: [
         "Sorry, I think I messed that up.",
@@ -178,10 +209,10 @@ def call_gemini(prompt: str) -> Optional[str]:
             try:
                 _record_request(model_name)
                 
-                # Optimized config - minimal tokens for speed
+                # Optimized config - balanced for quality and speed
                 config = types.GenerateContentConfig(
-                    max_output_tokens=40,   # Very short for hackathon demo
-                    temperature=0.9,        # More variety
+                    max_output_tokens=60,   # Increased for more natural responses
+                    temperature=0.95,       # High variety to avoid repetition
                     thinking_config=types.ThinkingConfig(thinking_budget=0) if "gemini" in model_name else None,
                 )
                 
