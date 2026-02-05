@@ -3,9 +3,10 @@ from typing import Optional
 from app.agent.response_policy import ResponseCategory
 
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+def _get_gemini_key():
+    return os.getenv("GEMINI_API_KEY")
+
 GEMINI_MODEL = "gemini-1.5-flash"
-GEMINI_ENABLED = bool(GEMINI_API_KEY)
 
 
 FALLBACK_RESPONSES = {
@@ -57,7 +58,7 @@ def get_fallback_response(category: ResponseCategory) -> str:
 
 def should_use_gemini(category: ResponseCategory) -> bool:
     """Enable Gemini for all response categories when API key is available."""
-    return GEMINI_ENABLED
+    return bool(_get_gemini_key())
 
 
 def build_prompt(category: ResponseCategory, persona_traits: dict) -> str:
@@ -78,7 +79,7 @@ def build_prompt(category: ResponseCategory, persona_traits: dict) -> str:
 def call_gemini(prompt: str) -> Optional[str]:
     try:
         import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
+        genai.configure(api_key=_get_gemini_key())
         model = genai.GenerativeModel(GEMINI_MODEL)
         response = model.generate_content(
             prompt,
