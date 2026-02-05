@@ -1,10 +1,12 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
-from app.api.routes import router
+from app.api.routes import router, handle_message
+from app.api.schemas import IncomingRequest, APIResponse
+from app.api.auth import verify_api_key
 import logging
 
 app = FastAPI(
@@ -45,8 +47,7 @@ def api_health():
 
 @app.get("/", response_class=HTMLResponse)
 def root():
-    return """
-<!DOCTYPE html>
+    return """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1386,6 +1387,22 @@ def root():
 </body>
 </html>
     """
+
+
+@app.post(
+    "/",
+    response_model=APIResponse,
+    dependencies=[Depends(verify_api_key)],
+    summary="Alternative endpoint for /message",
+    description="Handles messages at root path for testing platforms that POST to base URL"
+)
+async def root_message_handler(request: IncomingRequest) -> APIResponse:
+    """
+    Alternative message endpoint at root path.
+    Some hackathon testing platforms POST to the base URL instead of /message.
+    This endpoint provides the same functionality as POST /message.
+    """
+    return await handle_message(request)
 
 
 @app.get("/health")
