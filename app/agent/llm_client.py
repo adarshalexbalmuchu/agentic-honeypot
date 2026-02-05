@@ -56,10 +56,8 @@ def get_fallback_response(category: ResponseCategory) -> str:
 
 
 def should_use_gemini(category: ResponseCategory) -> bool:
-    return GEMINI_ENABLED and category in {
-        ResponseCategory.CONFUSION,
-        ResponseCategory.CLARIFICATION,
-    }
+    """Enable Gemini for all response categories when API key is available."""
+    return GEMINI_ENABLED
 
 
 def build_prompt(category: ResponseCategory, persona_traits: dict) -> str:
