@@ -6,7 +6,7 @@ from app.agent.response_policy import ResponseCategory
 def _get_gemini_key():
     return os.getenv("GEMINI_API_KEY")
 
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
 
 
 FALLBACK_RESPONSES = {
@@ -64,28 +64,40 @@ def should_use_gemini(category: ResponseCategory) -> bool:
 def build_prompt(category: ResponseCategory, persona_traits: dict) -> str:
     category_name = category.name.lower().replace("_", " ")
     return (
-        f"You are a person with {persona_traits['digital_literacy']} digital literacy "
-        f"who feels {persona_traits['emotional_state']}.\n\n"
-        f"Write ONE short reply (1–2 sentences) that shows {category_name}.\n\n"
+        f"You are roleplaying as a person with {persona_traits['digital_literacy']} digital literacy "
+        f"who feels {persona_traits['emotional_state']}. A scammer is trying to trick you.\n\n"
+        f"Write ONE short reply (1-2 complete sentences) that shows {category_name}.\n\n"
         "Rules:\n"
-        "- Simple language\n"
-        "- No emojis\n"
-        "- No markdown\n"
-        "- Sound like a real person\n\n"
-        "Reply:"
+        "- Use simple everyday language\n"
+        "- No emojis, no markdown\n"
+        "- Sound like a real confused person talking on the phone\n"
+        "- Must be at least 8 words long\n\n"
+        "Your reply:"
     )
 
 
 def call_gemini(prompt: str) -> Optional[str]:
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=_get_gemini_key())
-        model = genai.GenerativeModel(GEMINI_MODEL)
-        response = model.generate_content(
-            prompt,
-            generation_config={"max_output_tokens": 50, "temperature": 0.6},
-        )
-        return response.text.strip() if response and response.text else None
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=_get_gemini_key())
+        for model_name in GEMINI_MODELS:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        max_output_tokens=200,
+                        temperature=0.7,
+                        thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    ),
+                )
+                if response and response.text:
+                    return response.text.strip()
+            except Exception:
+                continue
+        return None
     except Exception:
         return None
 
